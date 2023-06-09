@@ -8,6 +8,7 @@
 #include <Eigen/Core>
 #include <opencv2/core.hpp>
 #include <yaml-cpp/yaml.h>
+#include <Eigen/Core>
 
 typedef pcl::PointXYZRGBA PointT;
 typedef pcl::PointCloud<PointT> PointCloud;
@@ -60,9 +61,13 @@ bool GetTof(std::string yamlFile, TofDepthData &tof)
         int p = 0;
         for (int i = 0; i < 224 * 172; i++)
         {
+
             tof.data[i].X = data[p++];
+            if (tof.data[i].X > 5 or tof.data[i].X < -5) tof.data[i].X = 0;
             tof.data[i].Y = data[p++];
+            if (tof.data[i].Y > 5 or tof.data[i].Y < -5) tof.data[i].Y = 0;
             tof.data[i].Z = data[p++];
+            if (tof.data[i].Z > 5 or tof.data[i].Z < -5) tof.data[i].Z = 0;
             tof.data[i].noise = data[p++];
             tof.data[i].grayValue = data[p++];
             tof.data[i].depthConfidence = data[p++];
@@ -78,47 +83,38 @@ bool GetTof(std::string yamlFile, TofDepthData &tof)
 
 void ConvertTof2PCL(TofDepthData &tof, PointCloud::Ptr cloud)
 {
-    float maxZ = -1;
-    float minZ = 1;
-    float maxX = -1;
-    float minX = 1;
-    float maxY = -1;
-    float minY = 1;
-    for (const auto &t : tof.data)
+    // test rotation by Eigen
+    std::vector<Eigen::Vector3d> points;
+
+//    for (const auto &t : tof.data)
+    for (int i = 0; i < sizeof(tof.data) / sizeof(tof.data[0]); ++i)
     {
+        const auto t = tof.data[i];
+        float thea =0;
         PointT p;
         p.x = t.X;
-        p.y = t.Y;
-        p.z = t.Z;
+        p.y = t.Y * cos(thea) - t.Z * sin(thea);
+        p.z = t.Z * cos(thea) + t.Y * sin(thea);
         cloud->points.push_back(p);
-//        if (t.X > maxX)
-//        {
-//            maxX = t.X;
-//        }
-//        if(t.X < minX)
-//        {
-//            minX = t.X;
-//        }
-//        if (t.Y > maxY)
-//        {
-//            maxY = t.Y;
-//        }
-//        if(t.Y < minY)
-//        {
-//            minY = t.Y;
-//        }
-//        if (t.Z > maxZ)
-//        {
-//            maxZ = t.Z;
-//        }
-//        if(t.Z < minZ)
-//        {
-//            minZ = t.Z;
-//        }
+
+        Eigen::Matrix3d R;
+        R = Eigen::AngleAxisd(thea, Eigen::Vector3d::UnitX());
+        points.push_back(Eigen::Vector3d(t.X, t.Y, t.Z));
+
+        points[points.size() -1] = R * points[points.size() -1];
+
+        if(p.y > -0.12 and p.x != 0)
+        {
+            std::cout << "x: " << p.x << ", p.y: " << p.y << "p.z: " << p.z << std::endl;
+            std::cout << "Eiichi: " << i << std::endl;
+        }
+
+        if (points[points.size() - 1][1] > -0.12 and points[points.size() - 1][0] !=0)
+        {
+            std::cout << "===x: " << points[points.size() - 1][0] << ", p.y: " << points[points.size() - 1][1] << "p.z: " << points[points.size() - 1][2] << std::endl;
+
+        }
     }
-//
-//    std::cout << "X: " << minX << "~" << maxX <<"  ,  Y: " << minY << "~" << maxY
-//    << " , minZ:" << minZ << "~" << maxZ<<std::endl;
 }
 
 int main(int argc, char ** argv)
@@ -128,7 +124,7 @@ int main(int argc, char ** argv)
     PointCloud::Ptr cloud(new PointCloud);
     TofDepthData tof;
 
-    GetTof(tofFile, tof);
+    if (not GetTof(tofFile, tof)) return 0;
 
     ConvertTof2PCL(tof, cloud);
 
