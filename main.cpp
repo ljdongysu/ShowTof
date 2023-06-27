@@ -10,6 +10,7 @@
 #include <yaml-cpp/yaml.h>
 #include <Eigen/Core>
 #include <cmath>
+#include "slam.h"
 
 typedef pcl::PointXYZRGBA PointT;
 typedef pcl::PointCloud<PointT> PointCloud;
@@ -126,9 +127,6 @@ void ConvertTof2PCL(TofDepthData &tof, PointCloud::Ptr cloud)
             }
         }
 
-
-
-
     }
 }
 const float NNN = 100;
@@ -144,14 +142,124 @@ float Nan_Replace(const float value)
     }
 }
 
+bool GetPose(std::string yamlFile, psl::SlamResult &pose)
+{
+    try
+    {
+        YAML::Node config;
+
+        if (not access(yamlFile.c_str(), 0) == 0)
+        {
+            std::cout << "file not exist <" + yamlFile + ">" << std::endl;
+        }
+        config = YAML::LoadFile(yamlFile);
+
+        pose.s_time = config["time"].as<unsigned long>();
+        pose.s_state = config["state"].as<float>();
+
+        try
+        {
+            pose.normal = config["normal"].as<bool>();
+        }
+        catch (YAML::TypedBadConversion<bool> &e)
+        {
+            pose.normal = true;
+        }
+
+        size_t size = 0;
+        std::vector<double> position = config["position"].as<std::vector<double>>();
+        size = position.size();
+        for (size_t i = 0; i < size; ++i)
+        {
+            pose.s_position[i] = position[i];
+        }
+
+        std::vector<double> rotation = config["rotation"].as<std::vector<double>>();
+        size = rotation.size();
+        for (size_t i = 0; i < size; ++i)
+        {
+            pose.s_rotation[i] = rotation[i];
+        }
+
+        return true;
+    }
+    catch (...)
+    {
+        return false;
+    }
+}
+
+void GetRotationAngle(float &thea1, float &thea2, float &thea3, const psl::SlamResult &pose)
+{
+    float q0 = pose.s_rotation[0];
+    float q1 = pose.s_rotation[1];
+    float q2 = pose.s_rotation[2];
+    float q3 = pose.s_rotation[2];
+    thea1 = atan2(2*(q0*q1+q2*q3),(1-2*(q1*q1+q2*q2)));
+    thea2 = asin(2*(q0*q2 - q1*q3));
+    thea3 = atan2(2*(q0*q3+q1*q2),(1-2*(q2*q2+q3*q3)));
+}
+
+Eigen::Quaternion<double> Pose2Quaternion(const psl::SlamResult& pose)
+{
+    Eigen::Quaternion<double> quaternion;
+
+    quaternion.w() = pose.s_rotation[0];
+    quaternion.x() = pose.s_rotation[1];
+    quaternion.y() = pose.s_rotation[2];
+    quaternion.z() = pose.s_rotation[3];
+
+    return quaternion;
+}
+
+void GetRotationAngle(float &thea1, float &thea2, float &thea3, const psl::SlamResult &poseLast, const psl::SlamResult &poseCurrent)
+{
+    Eigen::Quaternion<double> last = Pose2Quaternion(poseLast);
+    Eigen::Quaternion<double> current = Pose2Quaternion(poseCurrent);
+    Eigen::Quaternion<double> quaternion = last.inverse() * current;
+    Eigen::Matrix<double, 3, 1> radian = Quaternion2Angle(quaternion);
+
+//    auto angle = radian * RADIAN_2_ANGLE;
+    thea1 = radian[0];
+    thea2 = radian[1];
+    thea3 = radian[2];
+}
+
 int main(int argc, char ** argv)
 {
 
     std::string tofFile = argv[1];
     PointCloud::Ptr cloud(new PointCloud);
     TofDepthData tof;
+    psl::SlamResult poseLast;
+    psl::SlamResult poseCurrent;
 
+    float a,b,c,d;
     if (not GetTof(tofFile, tof)) return 0;
+    if (argc > 2)
+    {
+        std::string poseFile = argv[2];
+        if (not GetPose(poseFile, poseLast)) return 0;
+
+//        GetRotationAngle(a,b,c,poseLast);
+    }
+
+    if (argc > 3)
+    {
+        std::string poseFile = argv[3];
+        if (not GetPose(poseFile, poseCurrent)) return 0;
+
+//        GetRotationAngle(a,b,c,poseLast);
+        GetRotationAngle(a,b,c,poseLast,poseCurrent);
+    }
+//    poseLast.s_rotation[0] = 1;
+//    poseLast.s_rotation[1] = 0;
+//
+//    poseLast.s_rotation[2] = 0;
+//
+//    poseLast.s_rotation[3] = 0;
+
+
 
     ConvertTof2PCL(tof, cloud);
 
