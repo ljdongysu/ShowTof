@@ -56,12 +56,15 @@ bool GetTof(std::string yamlFile, TofDepthData &tof)
         }
         config = YAML::LoadFile(yamlFile);
 
-        static std::vector<float> data(172 * 224 * 6);
+        int height = config["height"].as<int>();
+        int width = config["width"].as<int>();
+
+        static std::vector<float> data(height * width * 6);
 
         ReadArray(config["data"], data);
 
         int p = 0;
-        for (int i = 0; i < 224 * 172; i++)
+        for (int i = 0; i < height * width; i++)
         {
 
             tof.data[i].X = data[p++];
