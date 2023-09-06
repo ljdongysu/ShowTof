@@ -11,6 +11,7 @@
 #include <Eigen/Core>
 #include <cmath>
 #include "slam.h"
+#include "SpeckleFilter3d.h"
 
 typedef pcl::PointXYZRGBA PointT;
 typedef pcl::PointCloud<PointT> PointCloud;
@@ -26,7 +27,7 @@ struct TofDepthPoint {
 
 struct TofDepthData {
 
-    TofDepthPoint data[224*172];
+    TofDepthPoint data[224*109];
 };
 
 void ReadArray(const YAML::Node &config, std::vector<float> &array)
@@ -66,11 +67,22 @@ bool GetTof(std::string yamlFile, TofDepthData &tof)
         int p = 0;
         for (int i = 0; i < height * width; i++)
         {
-
+            if (data[p] != 0)
+            {
+                int k = 0;
+            }
             tof.data[i].X = data[p++];
             if (tof.data[i].X > 15 or tof.data[i].X < -15) tof.data[i].X = 0;
+            if (data[p] != 0)
+            {
+                int k = 0;
+            }
             tof.data[i].Y = data[p++];
             if (tof.data[i].Y > 15 or tof.data[i].Y < -15) tof.data[i].Y = 0;
+            if (data[p] != 0)
+            {
+                int k = 0;
+            }
             tof.data[i].Z = data[p++];
             if (tof.data[i].Z > 15 or tof.data[i].Z < -15) tof.data[i].Z = 0;
             tof.data[i].noise = data[p++];
@@ -111,8 +123,8 @@ void ConvertTof2PCL(TofDepthData &tof, PointCloud::Ptr cloud)
         p.y = (tempY * cos(thea) - t.Z * sin(thea));
         p.z = (t.Z * cos(thea) + tempY * sin(thea));
 //
-        if( p.y >0 && p.y < 1 )
-        {
+//        if( p.y >0 && p.y < 1 )
+//        {
             p.r = 255;
             if(p.x < -0.13664 && p.x > -0.13665 )
             {
@@ -128,7 +140,7 @@ void ConvertTof2PCL(TofDepthData &tof, PointCloud::Ptr cloud)
                 x = p.x;
                 std::cout << "===x: " << p.x << ", p.y: " << p.y << "p.z: " << p.z << std::endl;
             }
-        }
+//        }
 
     }
 }
@@ -228,6 +240,28 @@ void GetRotationAngle(float &thea1, float &thea2, float &thea3, const psl::SlamR
     thea3 = radian[2];
 }
 
+void ConvertTof2Mat3f(const TofDepthData &tof, cv::Mat3f &tofMat)
+{
+    float* srcPtr = (float*)tofMat.data;
+    for (int i = 0; i < sizeof(tof.data) / sizeof(tof.data[0]); ++i)
+    {
+        srcPtr[i * 3] = tof.data[i].X;
+        srcPtr[i * 3 + 1] = tof.data[i].Y;
+        srcPtr[i * 3 + 2] = tof.data[i].Z;
+    }
+}
+
+void ConvertMat3f2Tof(const cv::Mat3f &tofMat, TofDepthData &tof)
+{
+    float* srcPtr = (float*)tofMat.data;
+    for (int i = 0; i < sizeof(tof.data) / sizeof(tof.data[0]); ++i)
+    {
+        tof.data[i].X = srcPtr[i * 3];
+        tof.data[i].Y = srcPtr[i * 3 + 1];
+        tof.data[i].Z = srcPtr[i * 3 + 2];
+    }
+}
+
 int main(int argc, char ** argv)
 {
 
@@ -262,7 +296,13 @@ int main(int argc, char ** argv)
 //
 //    poseLast.s_rotation[3] = 0;
 
+    int height = 109;
+    int width = 224;
+    cv::Mat3f tofMat = cv::Mat::zeros(height, width, CV_64FC3);
+    ConvertTof2Mat3f(tof, tofMat);
+    SpeckleFileter3d(tofMat, cv::Scalar(0,0,0),4, 0.02, 0);
 
+    ConvertMat3f2Tof(tofMat, tof);
 
     ConvertTof2PCL(tof, cloud);
 
